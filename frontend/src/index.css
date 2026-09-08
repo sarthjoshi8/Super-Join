@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #FF5F1F;
+  --color-accent-hover: #E04D12;
+  --color-bg-black: #050505;
+  --color-surface: #111111;
+  --color-surface-hover: #1a1a1a;
+  --color-border: #333333;
+  --color-border-focus: #555555;
+  --font-serif: 'Cormorant Garamond', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg-black);
+    color: #F5F5F5;
+    font-family: var(--font-mono); /* Default to mono, use serif for headings */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-serif {
+    font-family: var(--font-serif);
+  }
+  
+  /* Stark, brutalist selection */
+  ::selection {
+    background-color: var(--color-accent);
+    color: #000;
+  }
+}
+
+@layer components {
+  /* Replace glass-panel with a sharp, opaque dossier panel */
+  .dossier-panel {
+    @apply bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-300;
+  }
+  
+  .dossier-panel:hover {
+    @apply border-[var(--color-border-focus)] shadow-[6px_6px_0px_0px_var(--color-accent)];
+  }
+  
+  .btn-primary {
+    @apply px-5 py-2.5 bg-transparent border-2 border-[var(--color-accent)] text-[var(--color-accent)] font-bold uppercase tracking-wider transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary:not(:disabled):hover {
+    @apply bg-[var(--color-accent)] text-black shadow-[4px_4px_0px_0px_rgba(255,255,255,0.1)];
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-transparent border border-[var(--color-border)] text-gray-400 font-medium uppercase tracking-wider transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-secondary:not(:disabled):hover {
+    @apply border-white text-white bg-[var(--color-surface-hover)];
+  }
+
+  /* The topographic / crosshair background pattern */
+  .bg-grid-pattern {
+    background-image: 
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-position: center center;
+  }
+  
+  .crosshair-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background-color: var(--color-bg-black);
+    background-image: 
+      radial-gradient(circle at center, transparent 0%, var(--color-bg-black) 100%),
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 100% 100%, 60px 60px, 60px 60px;
+    background-position: center center;
+    pointer-events: none;
+  }
+}
+

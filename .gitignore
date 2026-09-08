@@ -1,0 +1,61 @@
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+
+# ── Node / Frontend ───────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Environment / Secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Data & Databases (runtime-generated — never commit) ───────────────
+data/
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+backend/data.db
+data/db/
+data/uploads/
+chroma/
+
+# ── Logs & Caches ──────────────────────────────────────────────────────
+*.log
+.cache/
+.huggingface/
+
+# ── IDE & OS ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db

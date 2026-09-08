@@ -1,0 +1,20 @@
+# Core
+fastapi>=0.115.9
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+python-dotenv>=1.1.0
+pydantic>=2.11.0
+
+# PDF parsing
+PyMuPDF>=1.25.0
+
+# Database
+sqlalchemy>=2.0.40
+aiosqlite>=0.21.0
+greenlet>=3.1.1
+
+# Vector store
+chromadb>=1.0.7
+
+# Gemini AI
+google-genai>=1.14.0
