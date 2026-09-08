@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
@@ -14,13 +15,31 @@ from app.services.embeddings import facts_collection
 from app.services.builtin_dataset import ingest_builtin_dataset
 
 
+async def run_builtin_dataset_ingestion():
+    """Run built-in dataset ingestion in the background."""
+    try:
+        # Give the API a few seconds to finish starting before
+        # beginning the memory-intensive PDF processing.
+        await asyncio.sleep(10)
+
+        print("[Built-in Dataset] Starting background ingestion...")
+        await ingest_builtin_dataset()
+        print("[Built-in Dataset] Background ingestion completed.")
+
+    except Exception as exc:
+        # Never allow dataset ingestion to crash the FastAPI server.
+        print(f"[Built-in Dataset] Background ingestion failed: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     await init_db()
 
-    # Automatically ingest built-in PDF dataset.
-    await ingest_builtin_dataset()
+    # Start built-in dataset ingestion in the background.
+    # The API can become healthy immediately instead of waiting
+    # for all PDFs to be processed.
+    asyncio.create_task(run_builtin_dataset_ingestion())
 
     yield
 
