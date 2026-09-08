@@ -65,7 +65,7 @@ async def analyze_document_facts(document_id: str, db: Session):
             
             similar_ids = [
                 fid for fid, dist in zip(raw_ids, raw_dists)
-                if dist <= 0.55
+                if dist <= 1.0
             ] if raw_dists else raw_ids
             
             if not similar_ids:
