@@ -1,4 +1,4 @@
-"""PDF processing, chunking, and fact extraction service."""
+"""Fast PDF processing, chunking, and Gemini fact extraction service."""
 
 import asyncio
 import hashlib
@@ -24,8 +24,24 @@ from app.services.embeddings import upsert_facts_to_vector_db
 genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 
-# ── Pydantic Schema for Gemini Structured Output ───────────────────────
+# -------------------------------------------------------------------
+# Configuration
+# -------------------------------------------------------------------
 
+# Number of Gemini requests allowed at the same time.
+# 3 is a good balance for Render Free + Gemini API.
+GEMINI_CONCURRENCY = 3
+
+# Maximum time allowed for one Gemini request.
+GEMINI_TIMEOUT = 90
+
+# Number of retries for temporary failures.
+MAX_RETRIES = 3
+
+
+# -------------------------------------------------------------------
+# Pydantic schemas
+# -------------------------------------------------------------------
 
 class ExtractedFact(BaseModel):
     subject: str = Field(
@@ -94,22 +110,26 @@ class FactExtractionResponse(BaseModel):
     facts: List[ExtractedFact]
 
 
-# ── File Hash ───────────────────────────────────────────────────────────
-
+# -------------------------------------------------------------------
+# File hash
+# -------------------------------------------------------------------
 
 def compute_file_hash(file_bytes: bytes) -> str:
     """Compute SHA-256 hash of a file."""
     return hashlib.sha256(file_bytes).hexdigest()
 
 
-# ── PDF Extraction ──────────────────────────────────────────────────────
+# -------------------------------------------------------------------
+# PDF extraction
+# -------------------------------------------------------------------
 
-
-async def extract_pdf_chunks(filepath: str) -> List[Dict[str, Any]]:
+async def extract_pdf_chunks(
+    filepath: str,
+) -> List[Dict[str, Any]]:
     """
     Extract PDF text into bounded-size chunks.
 
-    PDF work happens in a worker thread so it does not block FastAPI.
+    PyMuPDF runs in a worker thread so FastAPI remains responsive.
     """
 
     def _extract():
@@ -156,15 +176,14 @@ async def extract_pdf_chunks(filepath: str) -> List[Dict[str, Any]]:
     return await asyncio.to_thread(_extract)
 
 
-# ── Gemini Fact Extraction ──────────────────────────────────────────────
+# -------------------------------------------------------------------
+# Gemini fact extraction
+# -------------------------------------------------------------------
 
+def build_fact_prompt(chunk_text: str) -> str:
+    """Build the Gemini extraction prompt."""
 
-async def extract_facts_from_chunk_with_gemini(
-    chunk_text: str,
-) -> List[ExtractedFact]:
-    """Extract structured facts from one chunk using Gemini."""
-
-    prompt = f"""
+    return f"""
 Extract all verifiable facts from the following document text.
 
 Facts may include:
@@ -175,6 +194,7 @@ Facts may include:
 - Degrees, certifications and achievements
 - Locations
 - Stated attributes about people, companies or products
+- Financial, operational, business, economic, or statistical facts
 
 Rules:
 - Follow the exact JSON schema provided.
@@ -182,66 +202,164 @@ Rules:
 - If a value is implied but not explicit, set is_partial=true.
 - For non-numeric facts use numeric_value=null.
 - Extract ONLY facts.
+- Keep raw_statement short and directly supported by the text.
+- Avoid duplicate facts.
+- Return an empty facts list if no verifiable facts are present.
 
 TEXT:
 {chunk_text}
 """
 
-    for attempt in range(1, 6):
+
+async def extract_facts_from_chunk_with_gemini(
+    chunk_text: str,
+    chunk_number: Optional[int] = None,
+) -> List[ExtractedFact]:
+    """
+    Extract facts from one chunk using Gemini.
+
+    A timeout prevents one request from blocking the entire
+    document indefinitely.
+    """
+
+    prompt = build_fact_prompt(chunk_text)
+
+    for attempt in range(1, MAX_RETRIES + 1):
+
         try:
-            response = await asyncio.to_thread(
-                genai_client.models.generate_content,
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=FactExtractionResponse,
-                    temperature=0.1,
+
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    genai_client.models.generate_content,
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=FactExtractionResponse,
+                        temperature=0.1,
+                    ),
                 ),
+                timeout=GEMINI_TIMEOUT,
             )
 
             data = json.loads(response.text)
 
-            validated = FactExtractionResponse.model_validate(data)
+            validated = FactExtractionResponse.model_validate(
+                data
+            )
+
+            print(
+                f"[Gemini] Chunk "
+                f"{chunk_number if chunk_number is not None else '?'} "
+                f"extracted {len(validated.facts)} facts",
+                flush=True,
+            )
 
             return validated.facts
 
-        except Exception as exc:
-            if attempt == 5:
-                print(
-                    f"[Ingestion] Gemini extraction failed "
-                    f"after {attempt} attempts: {exc}"
-                )
-                return []
+        except asyncio.TimeoutError:
 
             print(
-                f"[Ingestion] Gemini extraction attempt "
-                f"{attempt} failed: {exc}"
+                f"[Gemini] Chunk "
+                f"{chunk_number if chunk_number is not None else '?'} "
+                f"timed out on attempt {attempt}/{MAX_RETRIES}",
+                flush=True,
             )
+
+        except Exception as exc:
 
             error_text = str(exc)
 
+            print(
+                f"[Gemini] Chunk "
+                f"{chunk_number if chunk_number is not None else '?'} "
+                f"failed on attempt {attempt}/{MAX_RETRIES}: "
+                f"{error_text}",
+                flush=True,
+            )
+
+            # Gemini rate limit.
             if (
                 "RESOURCE_EXHAUSTED" in error_text
                 or "429" in error_text
             ):
-                await asyncio.sleep(65)
 
-            else:
-                await asyncio.sleep(5)
+                # Short exponential backoff.
+                # We intentionally don't sleep 65 seconds here.
+                wait_time = min(
+                    5 * attempt,
+                    15,
+                )
 
-            if attempt == 1 and "schema" in error_text.lower():
+                print(
+                    f"[Gemini] Rate limit detected. "
+                    f"Waiting {wait_time}s...",
+                    flush=True,
+                )
+
+                await asyncio.sleep(wait_time)
+
+            elif "schema" in error_text.lower():
+
                 prompt = (
-                    "Previous attempt failed due to JSON schema "
-                    "validation. Ensure strict schema compliance.\n"
+                    "Return ONLY valid JSON matching the exact "
+                    "FactExtractionResponse schema.\n\n"
                     + prompt
                 )
+
+                await asyncio.sleep(1)
+
+            else:
+
+                await asyncio.sleep(2)
+
+    print(
+        f"[Gemini] Chunk "
+        f"{chunk_number if chunk_number is not None else '?'} "
+        f"failed after {MAX_RETRIES} attempts. Continuing.",
+        flush=True,
+    )
 
     return []
 
 
-# ── Main Processing Pipeline ────────────────────────────────────────────
+# -------------------------------------------------------------------
+# Concurrent Gemini processing
+# -------------------------------------------------------------------
 
+async def process_chunk_with_limit(
+    semaphore: asyncio.Semaphore,
+    chunk: Dict[str, Any],
+    index: int,
+) -> Dict[str, Any]:
+    """
+    Process one chunk while respecting the global Gemini
+    concurrency limit.
+    """
+
+    async with semaphore:
+
+        print(
+            f"[Ingestion] Gemini processing "
+            f"chunk {index}",
+            flush=True,
+        )
+
+        facts = await extract_facts_from_chunk_with_gemini(
+            chunk["text"],
+            chunk_number=index,
+        )
+
+        return {
+            "index": index,
+            "page_number": chunk["page_number"],
+            "facts": facts,
+        }
+
+
+# -------------------------------------------------------------------
+# Main processing pipeline
+# -------------------------------------------------------------------
 
 async def process_document_task(
     doc_id: str,
@@ -250,18 +368,31 @@ async def process_document_task(
     progress_store: Optional[dict] = None,
 ) -> None:
     """
-    Process one PDF using a memory-efficient sequential pipeline.
+    Process a PDF using controlled parallel Gemini extraction.
 
-    Important for low-memory hosting such as Render Free:
-    - PDF chunks are processed one at a time.
-    - Gemini calls are sequential.
-    - Facts are committed per chunk.
-    - Embeddings are created per chunk.
-    - We do not keep every document fact in RAM.
+    Pipeline:
+
+        PDF
+          ↓
+        PyMuPDF
+          ↓
+        3 Gemini requests at once
+          ↓
+        Database
+          ↓
+        Lightweight local embeddings
+          ↓
+        ChromaDB
+
+    Only a small number of Gemini requests run simultaneously
+    to keep Render memory and API rate usage under control.
     """
 
     try:
-        # ── Mark document as processing ────────────────────────────────
+
+        # ------------------------------------------------------------
+        # Mark document as processing
+        # ------------------------------------------------------------
 
         await session.execute(
             update(Document)
@@ -274,7 +405,9 @@ async def process_document_task(
 
         await session.commit()
 
-        # ── Extract PDF chunks ─────────────────────────────────────────
+        # ------------------------------------------------------------
+        # Extract PDF chunks
+        # ------------------------------------------------------------
 
         chunks = await extract_pdf_chunks(filepath)
 
@@ -282,85 +415,221 @@ async def process_document_task(
 
         print(
             f"[Ingestion] Document {doc_id}: "
-            f"{total_chunks} chunk(s)"
+            f"{total_chunks} chunk(s)",
+            flush=True,
         )
 
+        if total_chunks == 0:
+
+            await session.execute(
+                update(Document)
+                .where(Document.id == doc_id)
+                .values(
+                    status="failed",
+                    error_message="No readable text found in PDF.",
+                )
+            )
+
+            await session.commit()
+
+            return
+
         if progress_store is not None:
+
             progress_store[doc_id] = {
                 "stage": "extracting",
                 "done": 0,
                 "total": total_chunks,
             }
 
-        total_facts = 0
+        # ------------------------------------------------------------
+        # Controlled concurrent Gemini processing
+        # ------------------------------------------------------------
 
-        # ── Process ONE chunk at a time ────────────────────────────────
+        semaphore = asyncio.Semaphore(
+            GEMINI_CONCURRENCY
+        )
 
-        for index, chunk in enumerate(chunks, start=1):
+        tasks = [
+            process_chunk_with_limit(
+                semaphore,
+                chunk,
+                index,
+            )
+            for index, chunk in enumerate(
+                chunks,
+                start=1,
+            )
+        ]
+
+        print(
+            f"[Ingestion] Starting "
+            f"{GEMINI_CONCURRENCY} concurrent Gemini workers",
+            flush=True,
+        )
+
+        results = []
+
+        # Process chunks in small concurrent groups.
+        #
+        # We do not launch all chunks at once. This keeps memory
+        # predictable on Render Free.
+        for group_start in range(
+            0,
+            len(tasks),
+            GEMINI_CONCURRENCY,
+        ):
+
+            group = tasks[
+                group_start:
+                group_start + GEMINI_CONCURRENCY
+            ]
+
+            group_results = await asyncio.gather(
+                *group,
+                return_exceptions=True,
+            )
+
+            for result in group_results:
+
+                if isinstance(
+                    result,
+                    Exception,
+                ):
+
+                    print(
+                        f"[Ingestion] Chunk worker failed: "
+                        f"{result}",
+                        flush=True,
+                    )
+
+                    continue
+
+                results.append(result)
+
+            completed = min(
+                group_start + GEMINI_CONCURRENCY,
+                total_chunks,
+            )
+
+            if progress_store is not None:
+
+                progress_store[doc_id]["stage"] = (
+                    "extracting"
+                )
+
+                progress_store[doc_id]["done"] = (
+                    completed
+                )
 
             print(
-                f"[Ingestion] Document {doc_id}: "
-                f"processing chunk {index}/{total_chunks}"
+                f"[Ingestion] Gemini progress: "
+                f"{completed}/{total_chunks} chunks",
+                flush=True,
             )
 
-            facts = await extract_facts_from_chunk_with_gemini(
-                chunk["text"]
-            )
+        # ------------------------------------------------------------
+        # Store results in original chunk order
+        # ------------------------------------------------------------
+
+        results.sort(
+            key=lambda item: item["index"]
+        )
+
+        total_facts = 0
+
+        for result in results:
+
+            facts = result["facts"]
+
+            if not facts:
+                continue
+
+            page_number = result[
+                "page_number"
+            ]
 
             chunk_db_facts = []
 
-            # ── Store facts from this chunk ────────────────────────────
-
             for extracted_fact in facts:
+
                 db_fact = Fact(
                     document_id=doc_id,
                     subject=extracted_fact.subject,
                     predicate=extracted_fact.predicate,
                     value=extracted_fact.value,
-                    numeric_value=extracted_fact.numeric_value,
+                    numeric_value=(
+                        extracted_fact.numeric_value
+                    ),
                     unit=extracted_fact.unit,
-                    time_start=extracted_fact.time_start,
-                    time_end=extracted_fact.time_end,
-                    time_label=extracted_fact.time_label,
+                    time_start=(
+                        extracted_fact.time_start
+                    ),
+                    time_end=(
+                        extracted_fact.time_end
+                    ),
+                    time_label=(
+                        extracted_fact.time_label
+                    ),
                     scope=extracted_fact.scope,
-                    raw_statement=extracted_fact.raw_statement,
-                    is_partial=extracted_fact.is_partial,
+                    raw_statement=(
+                        extracted_fact.raw_statement
+                    ),
+                    is_partial=(
+                        extracted_fact.is_partial
+                    ),
                     note=extracted_fact.note,
-                    page_number=chunk["page_number"],
-                    confidence=extracted_fact.confidence,
+                    page_number=page_number,
+                    confidence=(
+                        extracted_fact.confidence
+                    ),
                 )
 
                 session.add(db_fact)
                 chunk_db_facts.append(db_fact)
 
-            if chunk_db_facts:
-                await session.commit()
+            # --------------------------------------------------------
+            # Commit facts
+            # --------------------------------------------------------
 
-                # Refresh only this chunk's facts.
-                for db_fact in chunk_db_facts:
-                    await session.refresh(db_fact)
+            await session.commit()
 
-                # ── Embed only this chunk ──────────────────────────────
+            # Refresh IDs generated by SQLAlchemy.
+            for db_fact in chunk_db_facts:
+                await session.refresh(db_fact)
 
-                if progress_store is not None:
-                    progress_store[doc_id]["stage"] = "embedding"
-
-                await upsert_facts_to_vector_db(chunk_db_facts)
-
-                total_facts += len(chunk_db_facts)
+            # --------------------------------------------------------
+            # Local embeddings
+            # --------------------------------------------------------
 
             if progress_store is not None:
-                progress_store[doc_id]["stage"] = "extracting"
-                progress_store[doc_id]["done"] = index
 
-            # Release chunk-level references before continuing.
-            del facts
+                progress_store[doc_id]["stage"] = (
+                    "embedding"
+                )
+
+            await upsert_facts_to_vector_db(
+                chunk_db_facts
+            )
+
+            total_facts += len(
+                chunk_db_facts
+            )
+
+            print(
+                f"[Ingestion] Stored "
+                f"{len(chunk_db_facts)} facts "
+                f"from chunk {result['index']}",
+                flush=True,
+            )
+
+            # Release references.
             del chunk_db_facts
+            del facts
 
-            # Give the event loop a chance to release resources.
-            await asyncio.sleep(0.1)
-
-        # ── Final document status ──────────────────────────────────────
+        # ------------------------------------------------------------
+        # Final document status
+        # ------------------------------------------------------------
 
         if total_facts > 0:
 
@@ -375,8 +644,10 @@ async def process_document_task(
             )
 
             print(
-                f"[Ingestion] Document {doc_id} completed "
-                f"with {total_facts} fact(s)."
+                f"[Ingestion] Document {doc_id} "
+                f"completed with "
+                f"{total_facts} fact(s).",
+                flush=True,
             )
 
         else:
@@ -386,31 +657,40 @@ async def process_document_task(
                 .where(Document.id == doc_id)
                 .values(
                     status="failed",
+                    page_count=total_chunks,
                     error_message=(
-                        "Rate limits exhausted or no facts "
-                        "could be extracted."
+                        "No facts could be extracted "
+                        "from the document."
                     ),
                 )
             )
 
             print(
-                f"[Ingestion] Document {doc_id} produced no facts."
+                f"[Ingestion] Document {doc_id} "
+                f"produced no facts.",
+                flush=True,
             )
 
         await session.commit()
 
         if progress_store is not None:
-            progress_store.pop(doc_id, None)
+            progress_store.pop(
+                doc_id,
+                None,
+            )
 
     except Exception as exc:
 
         print(
-            f"[Ingestion] Document {doc_id} failed: {exc}"
+            f"[Ingestion] Document {doc_id} failed: "
+            f"{exc}",
+            flush=True,
         )
 
         await session.rollback()
 
         try:
+
             await session.execute(
                 update(Document)
                 .where(Document.id == doc_id)
@@ -423,7 +703,10 @@ async def process_document_task(
             await session.commit()
 
         except Exception as status_exc:
+
             print(
-                f"[Ingestion] Could not update failed status: "
-                f"{status_exc}"
+                f"[Ingestion] Could not update failed "
+                f"status: {status_exc}",
+                flush=True,
             )
+
