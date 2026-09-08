@@ -4,6 +4,7 @@ import DocumentList from './components/DocumentList';
 import DocumentDetails from './components/DocumentDetails';
 import { Database, Zap, FileSearch, X, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE_URL } from './api';
 import './index.css';
 
 function SystemStatusModal({ isOpen, onClose }) {
@@ -11,7 +12,7 @@ function SystemStatusModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen) {
-      fetch('http://127.0.0.1:8000/api/status')
+      fetch(`${API_BASE_URL}/api/status`)
         .then(res => res.json())
         .then(data => setStatusData(data))
         .catch(err => console.error(err));
