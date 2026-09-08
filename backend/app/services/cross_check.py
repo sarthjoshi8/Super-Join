@@ -10,7 +10,8 @@ from pydantic import BaseModel
 import traceback
 
 from app.models import Fact, FactRelationship
-from app.services.embeddings import facts_collection, genai_client
+from app.services.embeddings import facts_collection
+from app.services.ingestion import genai_client
 from app.config import GEMINI_MODEL
 
 class RelationshipAdjudication(BaseModel):
