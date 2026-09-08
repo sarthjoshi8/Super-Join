@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { UploadCloud, FileType, CheckCircle, AlertCircle } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function UploadSection({ onUploadComplete }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -17,7 +18,7 @@ export default function UploadSection({ onUploadComplete }) {
   const handleDrop = async (e) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.type === 'application/pdf') {
@@ -31,22 +32,22 @@ export default function UploadSection({ onUploadComplete }) {
   const uploadFile = async (file) => {
     setIsUploading(true);
     setError(null);
-    
+
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/documents/upload', {
+      const res = await fetch(`${API_BASE_URL}/api/documents/upload`, {
         method: 'POST',
         body: formData,
       });
-      
+
       const data = await res.json();
-      
+
       if (!res.ok) {
         throw new Error(data.detail || 'Upload failed');
       }
-      
+
       if (onUploadComplete) {
         onUploadComplete(data.document_id);
       }
@@ -62,10 +63,9 @@ export default function UploadSection({ onUploadComplete }) {
 
   return (
     <div className="dossier-panel p-8">
-      <div 
-        className={`border-2 border-dashed p-10 text-center transition-all duration-300 ${
-          isDragging ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10' : 'border-[var(--color-border)] hover:border-gray-500'
-        }`}
+      <div
+        className={`border-2 border-dashed p-10 text-center transition-all duration-300 ${isDragging ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10' : 'border-[var(--color-border)] hover:border-gray-500'
+          }`}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
@@ -75,16 +75,16 @@ export default function UploadSection({ onUploadComplete }) {
         <p className="text-gray-500 mb-8 max-w-sm mx-auto text-sm tracking-wider uppercase font-mono">
           Drag and drop PDF report to extract and map facts.
         </p>
-        
-        <input 
-          type="file" 
+
+        <input
+          type="file"
           accept="application/pdf"
-          className="hidden" 
+          className="hidden"
           ref={fileInputRef}
           onChange={handleFileChange}
         />
-        
-        <button 
+
+        <button
           className="btn-primary flex items-center justify-center mx-auto space-x-3 w-full max-w-xs"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
@@ -101,7 +101,7 @@ export default function UploadSection({ onUploadComplete }) {
             </>
           )}
         </button>
-        
+
         {error && (
           <div className="mt-6 p-4 bg-red-950/50 border border-red-500 text-red-500 flex items-center justify-center space-x-3 text-sm font-bold tracking-wider">
             <AlertCircle className="w-5 h-5" />

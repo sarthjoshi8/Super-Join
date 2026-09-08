@@ -22,25 +22,25 @@ function SystemStatusModal({ isOpen, onClose }) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
         >
-          <motion.div 
+          <motion.div
             initial={{ scale: 0.95, y: 10 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.95, y: 10 }}
             className="dossier-panel p-8 w-full max-w-md relative"
           >
-            <button 
+            <button
               onClick={onClose}
               className="absolute top-4 right-4 text-gray-500 hover:text-[var(--color-accent)] transition-colors"
             >
               <X className="w-6 h-6" />
             </button>
-            
+
             <div className="flex items-center space-x-4 mb-8 border-b border-[var(--color-border)] pb-4">
               <Activity className="w-8 h-8 text-[var(--color-accent)]" />
               <h2 className="text-2xl font-serif text-white uppercase tracking-widest">System Status</h2>
@@ -87,7 +87,7 @@ function App() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/documents');
+      const res = await fetch(`${API_BASE_URL}/api/documents`);
       if (res.ok) {
         const data = await res.json();
         setDocuments(data);
@@ -132,12 +132,12 @@ function App() {
   return (
     <div className="min-h-screen text-[#f5f5f5] relative font-mono selection:bg-[var(--color-accent)] selection:text-black">
       <div className="crosshair-bg" />
-      
+
       {/* Navbar */}
       <nav className="border-b border-[var(--color-border)] bg-[var(--color-bg-black)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center space-x-4"
@@ -150,20 +150,20 @@ function App() {
                 <p className="text-xs text-[var(--color-accent)] tracking-[0.2em] uppercase font-bold mt-1">Semantic Reconciliation</p>
               </div>
             </motion.div>
-            
-            <motion.div 
+
+            <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               className="hidden md:flex items-center space-x-6 text-sm font-bold tracking-wider text-gray-400 uppercase"
             >
-              <div 
+              <div
                 className="flex items-center space-x-2 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-[var(--color-border)] px-4 py-2"
                 onClick={scrollToKnowledgeBase}
               >
                 <FileSearch className="w-4 h-4" />
                 <span>Knowledge Base</span>
               </div>
-              <div 
+              <div
                 className="flex items-center space-x-2 hover:text-white transition-colors cursor-pointer border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_var(--color-accent)]"
                 onClick={() => setIsStatusOpen(true)}
               >
@@ -178,9 +178,9 @@ function App() {
       {/* Main Layout */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          
+
           {/* Left Column (Upload + List) */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, type: 'spring', stiffness: 100 }}
@@ -188,26 +188,26 @@ function App() {
           >
             <UploadSection onUploadComplete={handleUploadComplete} />
             <div id="knowledge-base">
-              <DocumentList 
-                documents={documents} 
-                selectedId={selectedDocId} 
-                onSelect={setSelectedDocId} 
+              <DocumentList
+                documents={documents}
+                selectedId={selectedDocId}
+                onSelect={setSelectedDocId}
                 onDelete={handleDeleteDocument}
               />
             </div>
           </motion.div>
-          
+
           {/* Right Column (Details + Analysis) */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, type: 'spring', stiffness: 100 }}
             className="lg:col-span-8"
           >
             {selectedDocId ? (
-              <DocumentDetails 
-                documentId={selectedDocId} 
-                onClose={() => setSelectedDocId(null)} 
+              <DocumentDetails
+                documentId={selectedDocId}
+                onClose={() => setSelectedDocId(null)}
               />
             ) : (
               <div className="dossier-panel h-full min-h-[600px] flex flex-col items-center justify-center p-12 text-center bg-[var(--color-bg-black)]">
@@ -219,13 +219,13 @@ function App() {
               </div>
             )}
           </motion.div>
-          
+
         </div>
       </main>
 
-      <SystemStatusModal 
-        isOpen={isStatusOpen} 
-        onClose={() => setIsStatusOpen(false)} 
+      <SystemStatusModal
+        isOpen={isStatusOpen}
+        onClose={() => setIsStatusOpen(false)}
       />
     </div>
   );

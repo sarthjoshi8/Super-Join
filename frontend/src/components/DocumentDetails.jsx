@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Activity, Check, GitMerge, AlertTriangle, Info, Play, Loader, RefreshCw, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_BASE_URL } from '../api';
 
 export default function DocumentDetails({ documentId, onClose }) {
   const [doc, setDoc] = useState(null);
@@ -14,12 +15,12 @@ export default function DocumentDetails({ documentId, onClose }) {
     try {
       setLoading(true);
       const [docRes, relRes] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/api/documents/${documentId}`),
-        fetch(`http://127.0.0.1:8000/api/documents/${documentId}/relationships`)
+        fetch(`${API_BASE_URL}/api/documents/${documentId}`),
+        fetch(`${API_BASE_URL}/api/documents/${documentId}/relationships`)
       ]);
-      
+
       if (!docRes.ok) throw new Error('Failed to load document');
-      
+
       setDoc(await docRes.json());
       setRelationships(await relRes.json());
     } catch (err) {
@@ -43,11 +44,11 @@ export default function DocumentDetails({ documentId, onClose }) {
     }
     const id = setInterval(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/documents/${documentId}/progress`);
+        const res = await fetch(`${API_BASE_URL}/api/documents/${documentId}/progress`);
         const data = await res.json();
         setProgress(data);
         // Also refresh the document itself to catch status change
-        const docRes = await fetch(`http://127.0.0.1:8000/api/documents/${documentId}`);
+        const docRes = await fetch(`${API_BASE_URL}/api/documents/${documentId}`);
         if (docRes.ok) {
           const updated = await docRes.json();
           setDoc(updated);
@@ -56,7 +57,7 @@ export default function DocumentDetails({ documentId, onClose }) {
             setProgress(null);
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }, 2000);
     return () => clearInterval(id);
   }, [doc?.status, documentId]);
@@ -64,7 +65,7 @@ export default function DocumentDetails({ documentId, onClose }) {
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/documents/${documentId}/analyze`, {
+      const res = await fetch(`${API_BASE_URL}/api/documents/${documentId}/analyze`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Analysis failed to start');
@@ -77,8 +78,8 @@ export default function DocumentDetails({ documentId, onClose }) {
         elapsed += 2500;
         try {
           const [relRes, statusRes] = await Promise.all([
-            fetch(`http://127.0.0.1:8000/api/documents/${documentId}/relationships`),
-            fetch(`http://127.0.0.1:8000/api/documents/${documentId}/analysis_status`)
+            fetch(`${API_BASE_URL}/api/documents/${documentId}/relationships`),
+            fetch(`${API_BASE_URL}/api/documents/${documentId}/analysis_status`)
           ]);
           if (relRes.ok) {
             const newRels = await relRes.json();
@@ -96,9 +97,9 @@ export default function DocumentDetails({ documentId, onClose }) {
             clearInterval(interval);
             setIsAnalyzing(false);
           }
-        } catch (_) {}
+        } catch (_) { }
       }, 2500);
-      
+
     } catch (err) {
       alert(err.message);
       setIsAnalyzing(false);
@@ -116,7 +117,7 @@ export default function DocumentDetails({ documentId, onClose }) {
 
   if (error || !doc) {
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="dossier-panel p-8 text-center text-red-500 relative z-10 font-mono font-bold tracking-widest uppercase"
@@ -138,7 +139,7 @@ export default function DocumentDetails({ documentId, onClose }) {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
@@ -184,19 +185,19 @@ export default function DocumentDetails({ documentId, onClose }) {
             </div>
           )}
         </div>
-        
+
         <div className="flex space-x-4 shrink-0">
-          <motion.button 
+          <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={fetchDetails} 
+            onClick={fetchDetails}
             className="p-3 bg-transparent border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors"
             title="Refresh"
           >
             <RefreshCw className="w-5 h-5 text-gray-300" />
           </motion.button>
-          
-          <motion.button 
+
+          <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleAnalyze}
@@ -210,11 +211,11 @@ export default function DocumentDetails({ documentId, onClose }) {
             )}
             <span>{isAnalyzing ? 'Analyzing...' : 'Analyze Connections'}</span>
           </motion.button>
-          
-          <motion.button 
+
+          <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onClose} 
+            onClick={onClose}
             className="p-3 bg-transparent border border-[var(--color-border)] hover:bg-red-950/50 hover:border-red-500 hover:text-red-500 transition-colors"
             title="Close"
           >
@@ -222,13 +223,13 @@ export default function DocumentDetails({ documentId, onClose }) {
           </motion.button>
         </div>
       </div>
-      
+
       {/* Scrollable Content */}
       <div className="p-8 overflow-y-auto custom-scrollbar bg-[var(--color-bg-black)]">
-        
+
         <AnimatePresence mode="wait">
           {relationships.length === 0 ? (
-            <motion.div 
+            <motion.div
               key="empty"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -253,7 +254,7 @@ export default function DocumentDetails({ documentId, onClose }) {
               )}
             </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               key="content"
               variants={containerVariants}
               initial="hidden"
@@ -315,7 +316,7 @@ export default function DocumentDetails({ documentId, onClose }) {
 function RelationshipCard({ rel, type }) {
   const factA = rel.fact_a || {};
   const factB = rel.fact_b || {};
-  
+
   const typeStyles = {
     corroborate: "border-emerald-500/50 hover:border-emerald-500 hover:shadow-[4px_4px_0px_0px_rgba(16,185,129,0.3)]",
     contradict: "border-red-500/50 hover:border-red-500 hover:shadow-[4px_4px_0px_0px_rgba(239,68,68,0.3)]",
@@ -323,7 +324,7 @@ function RelationshipCard({ rel, type }) {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className={`bg-[var(--color-surface)] border-2 ${typeStyles[type]} transition-all duration-300 font-mono`}
@@ -337,11 +338,11 @@ function RelationshipCard({ rel, type }) {
             <span className="text-[10px] text-[var(--color-accent)] border border-[var(--color-accent)] px-2 py-1 uppercase font-bold">{factA.time_label || 'NO TIME METADATA'}</span>
           </div>
         </div>
-        
+
         <div className="flex items-center justify-center border-l border-r border-[var(--color-border)] px-6">
           <GitMerge className="w-8 h-8 text-[var(--color-border-focus)] rotate-90 md:rotate-0" />
         </div>
-        
+
         <div className="flex-1">
           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 border-b border-[var(--color-border)] pb-1">Matched Record</div>
           <p className="text-gray-300 font-bold mb-2 uppercase tracking-wide">{factB.subject} <span className="text-[var(--color-accent)] mx-2">&gt;&gt;</span> {factB.predicate}</p>
@@ -351,7 +352,7 @@ function RelationshipCard({ rel, type }) {
           </div>
         </div>
       </div>
-      
+
       <div className="bg-black border-t border-[var(--color-border)] p-4 text-xs text-gray-400 flex items-start space-x-4">
         <div className="bg-[var(--color-accent)] text-black font-bold px-2 py-1 uppercase tracking-widest shrink-0">AI Logic</div>
         <p className="uppercase tracking-widest leading-relaxed mt-0.5">{rel.reason}</p>
