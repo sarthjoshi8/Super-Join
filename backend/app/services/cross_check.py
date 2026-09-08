@@ -65,7 +65,7 @@ async def analyze_document_facts(document_id: str, db: Session):
             
             similar_ids = [
                 fid for fid, dist in zip(raw_ids, raw_dists)
-                if dist <= 0.38
+                if dist <= 0.55
             ] if raw_dists else raw_ids
             
             if not similar_ids:
@@ -123,7 +123,7 @@ def heuristic_adjudicate(fact_a: Fact, fact_b: Fact) -> tuple[str, str]:
     words_b = set(sub_b.split())
     overlap = len(words_a & words_b) / max(len(words_a | words_b), 1)
     
-    if overlap < 0.25 and sub_a not in sub_b and sub_b not in sub_a:
+    if overlap < 0.10 and sub_a not in sub_b and sub_b not in sub_a:
         return "UNRELATED", "Different subjects"
         
     same_time = (time_a == time_b) or not time_a or not time_b
