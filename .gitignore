@@ -31,7 +31,8 @@ pnpm-debug.log*
 *.key
 
 # ── Data & Databases (runtime-generated — never commit) ───────────────
-data/
+data/uploads/
+data/chroma_db/
 backend/data/
 *.db
 *.sqlite
