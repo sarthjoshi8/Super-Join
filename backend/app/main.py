@@ -36,10 +36,6 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     await init_db()
 
-    # Start built-in dataset ingestion in the background.
-    # The API can become healthy immediately instead of waiting
-    # for all PDFs to be processed.
-    asyncio.create_task(run_builtin_dataset_ingestion())
 
     yield
 
