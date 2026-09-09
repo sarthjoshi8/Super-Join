@@ -1,4 +1,5 @@
 Super Join: Semantic Reconciliation
+
 You can test on : https://sarthjoshi8-super-join.vercel.app/
 
 Super Join is a full-stack, AI-powered fact extraction and reconciliation engine. It ingests complex PDF documents such as financial prospectuses, economic surveys, annual reports, and cover letters, extracts structured facts, and automatically maps relationships between them to detect corroborations, contradictions, and contextual differences across the knowledge base.
