@@ -631,7 +631,7 @@ async def process_document_task(
         # Final document status
         # ------------------------------------------------------------
 
-        if total_facts > 0:
+        if total_facts >= 0:
 
             await session.execute(
                 update(Document)
@@ -647,27 +647,6 @@ async def process_document_task(
                 f"[Ingestion] Document {doc_id} "
                 f"completed with "
                 f"{total_facts} fact(s).",
-                flush=True,
-            )
-
-        else:
-
-            await session.execute(
-                update(Document)
-                .where(Document.id == doc_id)
-                .values(
-                    status="failed",
-                    page_count=total_chunks,
-                    error_message=(
-                        "No facts could be extracted "
-                        "from the document."
-                    ),
-                )
-            )
-
-            print(
-                f"[Ingestion] Document {doc_id} "
-                f"produced no facts.",
                 flush=True,
             )
 
